@@ -1,0 +1,11 @@
+{
+  "extends": "./packages/typescript-config/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@sacco/core": ["domain/core/src"],
+      "@sacco/typescript-config/*": ["packages/typescript-config/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}
