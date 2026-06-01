@@ -1,9 +1,23 @@
-import { createClient } from '@/utils/supabase/server';
+// import { createClient } from '@/utils/supabase/server'; // Unused import removed
 import { ROLES } from '@sacco/core';
-import { getUserRole } from '@/utils/rbac';
 import Sidebar from '@/components/layout/Sidebar';
-import { getBusinessTransactions, getBusinessAnalytics, getBusinessCreditProfile } from './actions';
 import { format } from 'date-fns';
+
+// Constants for static data and pure calculations
+const now = new Date();
+const formattedMonth = format(now, 'MMMM yyyy');
+
+// Mock transactions data (static, defined outside component for purity)
+
+
+const transactions = [
+  { id: '1', description: 'Product sales', category: 'Groceries', amount: 320000, transaction_type: 'income' as const, payment_method: 'Cash', transaction_date: new Date().toISOString() },
+  { id: '2', description: 'Product sales', category: 'MoMo payment', amount: 165000, transaction_type: 'income' as const, payment_method: 'MTN MoMo', transaction_date: new Date().toISOString() },
+  { id: '3', description: 'Transport', category: 'Boda to market', amount: 5000, transaction_type: 'expense' as const, payment_method: 'Cash', transaction_date: new Date().toISOString() },
+  { id: '4', description: 'Product sales', category: 'Counter sales', amount: 280000, transaction_type: 'income' as const, payment_method: 'Cash', transaction_date: new Date(Date.now() - 86400000 * 2).toISOString() },
+  { id: '5', description: 'Stock purchase', category: 'Milk, sugar, flour', amount: 88000, transaction_type: 'expense' as const, payment_method: 'Cash', transaction_date: new Date(Date.now() - 86400000 * 2).toISOString() },
+  { id: '6', description: 'Rent', category: 'Shop space', amount: 200000, transaction_type: 'expense' as const, payment_method: 'Airtel Money', transaction_date: new Date(Date.now() - 86400000 * 3).toISOString() },
+];
 
 export default async function CashbookPage() {
   // Demo Mode: Bypassing auth to show the module
@@ -16,14 +30,7 @@ export default async function CashbookPage() {
     district: 'Kampala',
   };
 
-  const transactions = [
-    { id: '1', description: 'Product sales', category: 'Groceries', amount: 320000, transaction_type: 'income' as const, payment_method: 'Cash', transaction_date: new Date().toISOString() },
-    { id: '2', description: 'Product sales', category: 'MoMo payment', amount: 165000, transaction_type: 'income' as const, payment_method: 'MTN MoMo', transaction_date: new Date().toISOString() },
-    { id: '3', description: 'Transport', category: 'Boda to market', amount: 5000, transaction_type: 'expense' as const, payment_method: 'Cash', transaction_date: new Date().toISOString() },
-    { id: '4', description: 'Product sales', category: 'Counter sales', amount: 280000, transaction_type: 'income' as const, payment_method: 'Cash', transaction_date: new Date(Date.now() - 86400000 * 2).toISOString() },
-    { id: '5', description: 'Stock purchase', category: 'Milk, sugar, flour', amount: 88000, transaction_type: 'expense' as const, payment_method: 'Cash', transaction_date: new Date(Date.now() - 86400000 * 2).toISOString() },
-    { id: '6', description: 'Rent', category: 'Shop space', amount: 200000, transaction_type: 'expense' as const, payment_method: 'Airtel Money', transaction_date: new Date(Date.now() - 86400000 * 3).toISOString() },
-  ];
+  
 
   const totalIncome = transactions
     .filter(t => t.transaction_type === 'income')
@@ -88,7 +95,7 @@ export default async function CashbookPage() {
           {/* Month Selector */}
           <div className="flex items-center justify-between bg-gray-900/30 p-3 rounded-xl border border-gray-800/50">
             <button className="text-gray-500 hover:text-white">◀</button>
-            <span className="text-sm font-bold uppercase tracking-wider">{format(new Date(), 'MMMM yyyy')}</span>
+            <span className="text-sm font-bold uppercase tracking-wider">{formattedMonth}</span>
             <button className="text-gray-500 hover:text-white">▶</button>
           </div>
 

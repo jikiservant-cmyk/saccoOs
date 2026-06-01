@@ -147,7 +147,7 @@ export default function NewOrganizationPage() {
             </div>
             <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
               <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Monetization</p>
-              <p className="text-xs font-bold text-emerald-700">Default subscription will be set to 'Trial' for new organizations.</p>
+              <p className="text-xs font-bold text-emerald-700">Default subscription will be set to &apos;Trial&apos; for new organizations.</p>
             </div>
           </div>
         </div>

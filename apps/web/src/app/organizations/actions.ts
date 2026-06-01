@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-export async function createOrganization(formData: FormData) {
+export async function createOrganization(formData: FormData): Promise<void> {
   const supabase = await createClient();
 
   const name = formData.get('name') as string;
@@ -16,7 +16,7 @@ export async function createOrganization(formData: FormData) {
   const country = formData.get('country') as string || 'Uganda';
   const currency = formData.get('currency') as string || 'UGX';
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('organizations')
     .insert([
       {
@@ -31,12 +31,11 @@ export async function createOrganization(formData: FormData) {
         is_active: true,
       },
     ])
-    .select()
     .single();
 
   if (error) {
     console.error('Error creating organization:', error);
-    return { error: error.message };
+    return;
   }
 
   revalidatePath('/organizations');

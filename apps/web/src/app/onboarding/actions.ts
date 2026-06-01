@@ -66,19 +66,10 @@ export async function selectOrganization(formData: FormData) {
       return redirect(`/onboarding?error=${encodeURIComponent(error.message)}`);
     }
 
-    // TODO: Send notification to SACCO admin
-    // This could be another table 'notifications' or 'join_requests'
-    await supabase
-      .from('notifications')
-      .insert([
-        {
-          organization_id: organizationId,
-          title: 'New Join Request',
-          message: `A new SME "${business.id}" wants to join your organization.`,
-          type: 'join_request',
-          status: 'unread',
-        },
-      ]);
+    // TODO: Send notification to SACCO admin via a future notifications system
+    // The 'notifications' table is not yet in the schema
+    // For now, the admin will see the pending request in the organizations dashboard
+    console.log(`New join request: business ${business.id} → org ${organizationId}`);
 
     revalidatePath('/', 'layout');
     return redirect('/onboarding/success');
