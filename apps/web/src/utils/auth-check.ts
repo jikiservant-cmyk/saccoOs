@@ -5,6 +5,7 @@ export async function getOnboardingStatus(userId: string) {
 
   // 1. Check if user has a business
   const { data: business } = await supabase
+    .schema('sacco')
     .from('businesses')
     .select('id')
     .eq('owner_profile_id', userId)
@@ -14,6 +15,7 @@ export async function getOnboardingStatus(userId: string) {
 
   // 2. Check if business is linked to an organization (independent or joined)
   const { data: relationship } = await supabase
+    .schema('sacco')
     .from('business_organizations')
     .select('status')
     .eq('business_id', business.id)

@@ -12,10 +12,34 @@ export async function login(formData: FormData) {
     password: formData.get('password') as string,
   };
 
-  const { error } = await supabase.auth.signInWithPassword(data);
+  const { error, data: authData } = await supabase.auth.signInWithPassword(data);
 
   if (error) {
     return redirect('/login?error=' + encodeURIComponent(error.message));
+  }
+
+  if (authData.user) {
+    const { data: profile } = await supabase
+      .schema('sacco')
+      .from('profiles')
+      .select('is_platform_admin, roles')
+      .eq('id', authData.user.id)
+      .single();
+
+    revalidatePath('/', 'layout');
+
+    if (profile?.is_platform_admin) {
+      return redirect('/super-admin');
+    }
+
+    // Check roles for redirection
+    const roles = profile?.roles || [];
+    if (roles.includes('sacco_admin')) {
+      return redirect('/admin');
+    } else if (roles.includes('member') || roles.includes('business_owner')) {
+      // Both members and business owners go to the SME dashboard (cashbook)
+      return redirect('/cashbook');
+    }
   }
 
   revalidatePath('/', 'layout');
@@ -29,6 +53,7 @@ export async function signup(formData: FormData) {
   const password = formData.get('password') as string;
   const fullName = formData.get('fullName') as string;
   const phone = formData.get('phone') as string;
+  const role = formData.get('role') as string;
 
   console.log('Attempting signup for:', email);
 
@@ -39,6 +64,7 @@ export async function signup(formData: FormData) {
       data: {
         full_name: fullName,
         phone: phone,
+        role: role,
       },
       emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`,
     },
@@ -52,50 +78,61 @@ export async function signup(formData: FormData) {
   if (data.user) {
     console.log('Auth user created successfully:', data.user.id);
 
-    // 1. Ensure Profile exists
+    // 1. Ensure Profile exists with the chosen role
+    // Using upsert since the user might already have an auth record but no profile
     const { error: profileError } = await supabase
+      .schema('sacco')
       .from('profiles')
-      .upsert([
-        {
-          id: data.user.id,
-          full_name: fullName,
-          email: email,
-          phone: phone,
-          is_platform_admin: false,
-          is_active: true,
-        },
-      ]);
+      .upsert({
+        id: data.user.id,
+        full_name: fullName,
+        email: email,
+        phone: phone,
+        is_platform_admin: false,
+        is_active: true,
+        roles: [role],
+      }, { onConflict: 'id' });
     
     if (profileError) {
-        console.error('Error creating/updating profile:', profileError);
-        // We continue even if profile fails, as the user is already created in Auth
+        console.error('Error ensuring profile:', profileError);
     } else {
         console.log('Profile ensured successfully');
-    }
+        
+        // 2. Ensure a default Business exists for SME owners and members
+        if (role === 'business_owner' || role === 'member') {
+          const { data: existingBiz } = await supabase
+            .schema('sacco')
+            .from('businesses')
+            .select('id')
+            .eq('owner_profile_id', data.user.id)
+            .single();
 
-    // 2. Every person who signs up must be an SME
-    const { error: businessError } = await supabase
-      .from('businesses')
-      .upsert([
-        {
-          owner_profile_id: data.user.id,
-          name: `${fullName}'s Business`,
-          status: 'active',
-          country: 'Uganda',
-          currency: 'UGX',
-        },
-      ], { onConflict: 'owner_profile_id' });
-
-    if (businessError) {
-      console.error('Error creating initial business:', businessError);
-    } else {
-      console.log('Initial business created successfully');
+          if (!existingBiz) {
+            const { error: bizError } = await supabase
+              .schema('sacco')
+              .from('businesses')
+              .insert({
+                owner_profile_id: data.user.id,
+                name: `${fullName}'s Business`,
+                business_type: 'General',
+                district: 'Uganda',
+              });
+            
+            if (bizError) {
+              console.error('Error creating default business:', bizError);
+            } else {
+              console.log('Default business created successfully');
+            }
+          }
+        }
     }
 
     // If session exists (email confirmation is OFF in Supabase), go to dashboard
     if (data.session) {
       revalidatePath('/', 'layout');
-      return redirect('/');
+      // Redirect based on role
+      if (role === 'sacco_admin') return redirect('/admin');
+      return redirect('/cashbook');
     }
   }
 

@@ -8,6 +8,7 @@ export async function getBusinessTransactions(businessId: string) {
   const supabase = await createClient();
   
   const { data, error } = await supabase
+    .schema('sacco')
     .from('business_transactions')
     .select('*')
     .eq('business_id', businessId)
@@ -36,6 +37,7 @@ export async function addBusinessTransaction(formData: FormData) {
   if (!user) throw new Error('Not authenticated');
 
   const { error } = await supabase
+    .schema('sacco')
     .from('business_transactions')
     .insert([
       {
@@ -63,6 +65,7 @@ export async function getBusinessAnalytics(businessId: string) {
   const supabase = await createClient();
   
   const { data, error } = await supabase
+    .schema('sacco')
     .from('business_analytics_snapshots')
     .select('*')
     .eq('business_id', businessId)
@@ -83,6 +86,7 @@ export async function getBusinessCreditProfile(businessId: string) {
   const supabase = await createClient();
   
   const { data, error } = await supabase
+    .schema('sacco')
     .from('business_credit_profiles')
     .select('*')
     .eq('business_id', businessId)

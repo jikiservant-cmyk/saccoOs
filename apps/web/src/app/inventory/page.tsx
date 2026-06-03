@@ -1,9 +1,16 @@
-import Sidebar from '@/components/layout/Sidebar';
+import { createClient } from '@/utils/supabase/server';
 import { ROLES } from '@sacco/core';
+import { redirect } from 'next/navigation';
+import BottomNav from '@/components/layout/BottomNav';
 
-export default function InventoryPage() {
-  const role = ROLES.SME_OWNER;
-  
+export default async function InventoryPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return redirect('/login');
+  }
+
   const inventoryItems = [
     { id: '1', name: 'Maize Flour', sku: 'MF-001', quantity: 45, unit: 'kg', buyingPrice: 2500, sellingPrice: 3500, status: 'In Stock' },
     { id: '2', name: 'Sugar', sku: 'SG-012', quantity: 12, unit: 'kg', buyingPrice: 4000, sellingPrice: 5000, status: 'Low Stock' },
@@ -13,103 +20,94 @@ export default function InventoryPage() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-black text-white font-sans">
-      <Sidebar role={role} />
-      
-      <div className="flex-1 p-4 md:p-8 overflow-y-auto">
-        <div className="max-w-5xl mx-auto space-y-6 md:space-y-8">
-          {/* Header */}
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Inventory</h1>
-              <p className="text-gray-400 text-sm mt-1">Manage your stock and track reorder levels.</p>
-            </div>
-            <button className="w-full md:w-auto bg-green-600 hover:bg-green-700 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-lg shadow-green-900/20">
-              + Add New Item
-            </button>
-          </div>
+    <div className="app bg-[var(--bg)] min-h-screen relative pb-[100px]">
+      {/* HEADER */}
+      <header className="px-[22px] py-8 pb-4 animate-fade-up">
+        <div className="flex justify-between items-center mb-1">
+          <h1 className="font-serif text-[28px] font-bold text-[var(--navy)] tracking-tight">Inventory</h1>
+          <button className="w-10 h-10 rounded-xl bg-[var(--navy)] flex items-center justify-center text-white shadow-lg shadow-[var(--navy)]/20 active:scale-95 transition-all">
+            <svg className="w-6 h-6 stroke-current stroke-[2.5]" viewBox="0 0 24 24" fill="none">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        </div>
+        <p className="text-[13px] text-[var(--muted)] font-medium">Manage your stock and prices</p>
+      </header>
 
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-            <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Total Items</p>
-              <p className="text-2xl font-black mt-1">156</p>
-            </div>
-            <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Stock Value</p>
-              <p className="text-2xl font-black mt-1 text-green-500">12.4M</p>
-            </div>
-            <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Low Stock</p>
-              <p className="text-2xl font-black mt-1 text-orange-500">8</p>
-            </div>
-            <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Out of Stock</p>
-              <p className="text-2xl font-black mt-1 text-red-500">3</p>
-            </div>
+      {/* QUICK STATS */}
+      <div className="px-[22px] mb-6 animate-fade-up [animation-delay:0.05s]">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[var(--card)] border border-[var(--border2)] rounded-[20px] p-4">
+            <div className="text-[10px] font-bold text-[var(--muted2)] uppercase tracking-wider mb-1">Total Value</div>
+            <div className="font-serif text-xl font-bold text-[var(--navy)]">UGX 12.4M</div>
           </div>
-
-          {/* Search and Filters */}
-          <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
-              <input 
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:border-green-600 transition-colors"
-                placeholder="Search by product name or SKU..."
-              />
-            </div>
-            <button className="bg-gray-900 border border-gray-800 px-6 rounded-xl text-sm font-bold">
-              Filter
-            </button>
-          </div>
-
-          {/* Inventory Table */}
-          <div className="bg-gray-900/50 rounded-3xl border border-gray-800 overflow-x-auto">
-            <div className="min-w-[800px]">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-gray-900 text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-800">
-                    <th className="px-6 py-4">Item Name</th>
-                    <th className="px-6 py-4">SKU</th>
-                    <th className="px-6 py-4">Quantity</th>
-                    <th className="px-6 py-4">Buying Price</th>
-                    <th className="px-6 py-4">Selling Price</th>
-                    <th className="px-6 py-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800">
-                  {inventoryItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-800/30 transition-colors cursor-pointer group">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-gray-800 rounded-lg flex items-center justify-center text-xs">📦</div>
-                          <span className="text-sm font-bold">{item.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm font-mono text-gray-400">{item.sku}</td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-bold">{item.quantity}</span>
-                        <span className="text-[10px] text-gray-500 ml-1">{item.unit}</span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-400">UGX {item.buyingPrice.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-sm font-bold text-green-500">UGX {item.sellingPrice.toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                          item.status === 'In Stock' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                          item.status === 'Low Stock' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
-                          'bg-red-500/10 text-red-500 border-red-500/20'
-                        }`}>
-                          {item.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="bg-[var(--card)] border border-[var(--border2)] rounded-[20px] p-4">
+            <div className="text-[10px] font-bold text-[var(--muted2)] uppercase tracking-wider mb-1">Low Stock</div>
+            <div className="font-serif text-xl font-bold text-[var(--red)]">8 Items</div>
           </div>
         </div>
       </div>
+
+      {/* SEARCH */}
+      <div className="px-[22px] mb-6 animate-fade-up [animation-delay:0.1s]">
+        <div className="relative group">
+          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+            <svg className="w-4 h-4 text-[var(--muted2)] group-focus-within:text-[var(--teal)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <input 
+            type="text" 
+            placeholder="Search items or SKU..."
+            className="w-full bg-[var(--card)] border border-[var(--border2)] rounded-[18px] py-4 pl-12 pr-4 text-sm font-sans text-[var(--navy)] placeholder:text-[var(--muted2)] focus:outline-none focus:ring-2 focus:ring-[var(--teal)]/10 transition-all"
+          />
+        </div>
+      </div>
+
+      {/* INVENTORY LIST */}
+      <div className="px-[22px] animate-fade-up [animation-delay:0.15s]">
+        <div className="bg-[var(--card)] border border-[var(--border2)] rounded-[26px] overflow-hidden">
+          {inventoryItems.map((item, i) => (
+            <div key={item.id} className="p-5 border-b border-[rgba(14,140,114,0.07)] last:border-0 hover:bg-[var(--teal-lt)] transition-colors cursor-pointer group">
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg
+                    ${item.status === 'In Stock' ? 'bg-[var(--green-lt)]' : 
+                      item.status === 'Low Stock' ? 'bg-[var(--gold-lt)]' : 'bg-[var(--red-lt)]'}
+                  `}>
+                    📦
+                  </div>
+                  <div>
+                    <h3 className="text-[15px] font-bold text-[var(--navy)] group-hover:text-[var(--teal)] transition-colors">{item.name}</h3>
+                    <p className="font-mono text-[10px] text-[var(--muted2)] tracking-tight uppercase">{item.sku}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono text-[14px] font-bold text-[var(--navy)]">UGX {item.sellingPrice.toLocaleString()}</p>
+                  <p className="text-[10px] text-[var(--muted2)] font-medium">Profit: {((item.sellingPrice - item.buyingPrice) / 1000).toFixed(1)}K</p>
+                </div>
+              </div>
+              <div className="flex justify-between items-center mt-3 pt-3 border-t border-dashed border-[rgba(14,140,114,0.1)]">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-[var(--muted)]">Stock:</span>
+                  <span className={`text-[13px] font-mono font-bold ${item.quantity < 10 ? 'text-[var(--red)]' : 'text-[var(--navy)]'}`}>
+                    {item.quantity} {item.unit}
+                  </span>
+                </div>
+                <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border
+                  ${item.status === 'In Stock' ? 'bg-[var(--green-lt)] text-[var(--green)] border-[var(--green)]/10' : 
+                    item.status === 'Low Stock' ? 'bg-[var(--gold-lt)] text-[var(--gold-dark)] border-[var(--gold)]/10' : 
+                    'bg-[var(--red-lt)] text-[var(--red)] border-[var(--red)]/10'}
+                `}>
+                  {item.status}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <BottomNav />
     </div>
   );
 }

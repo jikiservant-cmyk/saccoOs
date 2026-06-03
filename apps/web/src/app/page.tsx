@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { signOut } from './auth/actions';
 import Sidebar from '@/components/layout/Sidebar';
 import { getUserRole } from '@/utils/rbac';
-import { getOnboardingStatus } from '@/utils/auth-check';
 import { redirect } from 'next/navigation';
 
 async function getMembers(): Promise<Member[]> {
@@ -30,16 +29,6 @@ async function getMembers(): Promise<Member[]> {
 export default async function MembersPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
-  if (user) {
-    const onboarding = await getOnboardingStatus(user.id);
-    
-    // If user hasn't picked an org and isn't a platform admin
-    const role = await getUserRole(user.id);
-    if (role !== 'super_admin' && !onboarding.hasOrg && !onboarding.isPending) {
-      return redirect('/onboarding');
-    }
-  }
 
   const role = user ? await getUserRole(user.id) : null;
   const members = await getMembers();

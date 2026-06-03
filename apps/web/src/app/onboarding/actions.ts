@@ -16,20 +16,23 @@ export async function selectOrganization(formData: FormData) {
   const isIndependent = formData.get('independent') === 'true';
 
   // Get the user's business
-  const { data: business } = await supabase
+  const { data: business, error: fetchError } = await supabase
+    .schema('sacco')
     .from('businesses')
     .select('id')
     .eq('owner_profile_id', user.id)
     .single();
 
-  if (!business) {
-    console.error('No business found for user:', user.id);
-    return redirect('/onboarding?error=Business profile not found. Please contact support.');
+  if (fetchError || !business) {
+    console.error('Business fetch error:', fetchError);
+    const detail = fetchError ? `${fetchError.code}: ${fetchError.message}` : 'No business record found in "sacco.businesses" table.';
+    return redirect(`/onboarding?error=${encodeURIComponent(`Database Error: ${detail}`)}`);
   }
 
   if (isIndependent) {
     // Record that this business is independent
-    const { error } = await supabase
+    const { error: insertError } = await supabase
+      .schema('sacco')
       .from('business_organizations')
       .insert([
         {
@@ -41,8 +44,9 @@ export async function selectOrganization(formData: FormData) {
         },
       ]);
 
-    if (error && error.code !== '23505') { // Ignore if already exists
-      return redirect(`/onboarding?error=${encodeURIComponent(error.message)}`);
+    if (insertError && insertError.code !== '23505') { // Ignore if already exists
+      console.error('Business relationship insert error:', insertError);
+      return redirect(`/onboarding?error=${encodeURIComponent(`Database Error (${insertError.code}): ${insertError.message}`)}`);
     }
 
     revalidatePath('/', 'layout');
@@ -52,6 +56,7 @@ export async function selectOrganization(formData: FormData) {
   if (organizationId) {
     // Create a pending relationship with the organization
     const { error } = await supabase
+      .schema('sacco')
       .from('business_organizations')
       .insert([
         {

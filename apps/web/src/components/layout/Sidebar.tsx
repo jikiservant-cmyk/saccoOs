@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Role, ROLE_PERMISSIONS, Permission, PERMISSIONS } from '@sacco/core';
+import { Role } from '@sacco/core';
 
 interface Module {
   name: string;
@@ -61,7 +61,8 @@ const ROLE_MODULES: Record<Role, Module[]> = {
     { name: 'Reports', path: '/reports', icon: '📊' },
   ],
   member: [
-    { name: 'My Dashboard', path: '/', icon: '🏠' },
+    { name: 'SME Dashboard', path: '/cashbook', icon: '🏪' },
+    { name: 'My Wallet', path: '/my-wallet', icon: '👛' },
     { name: 'My Savings', path: '/my-savings', icon: '🐷' },
     { name: 'My Loans', path: '/my-loans', icon: '💰' },
     { name: 'Loan Request', path: '/apply-loan', icon: '📝' },
@@ -69,8 +70,7 @@ const ROLE_MODULES: Record<Role, Module[]> = {
     { name: 'Profile', path: '/profile', icon: '👤' },
   ],
   sme_owner: [
-    { name: 'Business Hub', path: '/cashbook', icon: '🏪' },
-    { name: 'Cashbook', path: '/cashbook', icon: '📓' },
+    { name: 'SME Dashboard', path: '/cashbook', icon: '🏪' },
     { name: 'Inventory', path: '/inventory', icon: '📦' },
     { name: 'Receivables', path: '/receivables', icon: '📉' },
     { name: 'Payables', path: '/payables', icon: '📈' },
