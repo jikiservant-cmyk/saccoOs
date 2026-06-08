@@ -13,72 +13,102 @@ export async function selectOrganization(formData: FormData) {
   }
 
   const organizationId = formData.get('organizationId') as string;
-  const isIndependent = formData.get('independent') === 'true';
 
-  // Get the user's business
-  const { data: business, error: fetchError } = await supabase
+  if (!organizationId) {
+    return redirect(`/onboarding?error=${encodeURIComponent('Please select a SACCO to join.')}`);
+  }
+
+  // Create an active relationship with the organization in members table
+  const { error } = await supabase
     .schema('sacco')
-    .from('businesses')
-    .select('id')
-    .eq('owner_profile_id', user.id)
-    .single();
-
-  if (fetchError || !business) {
-    console.error('Business fetch error:', fetchError);
-    const detail = fetchError ? `${fetchError.code}: ${fetchError.message}` : 'No business record found in "sacco.businesses" table.';
-    return redirect(`/onboarding?error=${encodeURIComponent(`Database Error: ${detail}`)}`);
-  }
-
-  if (isIndependent) {
-    // Record that this business is independent
-    const { error: insertError } = await supabase
-      .schema('sacco')
-      .from('business_organizations')
-      .insert([
-        {
-          business_id: business.id,
-          organization_id: null, // No organization for independent SMEs
-          relationship_type: 'member',
-          status: 'independent',
-          joined_at: new Date(),
-        },
-      ]);
-
-    if (insertError && insertError.code !== '23505') { // Ignore if already exists
-      console.error('Business relationship insert error:', insertError);
-      return redirect(`/onboarding?error=${encodeURIComponent(`Database Error (${insertError.code}): ${insertError.message}`)}`);
-    }
-
-    revalidatePath('/', 'layout');
-    return redirect('/');
-  }
-
-  if (organizationId) {
-    // Create a pending relationship with the organization
-    const { error } = await supabase
-      .schema('sacco')
-      .from('business_organizations')
-      .insert([
-        {
-          business_id: business.id,
-          organization_id: organizationId,
-          relationship_type: 'member',
-          status: 'pending',
-        },
-      ]);
+    .from('members')
+    .upsert({
+      profile_id: user.id,
+      organization_id: organizationId,
+      membership_number: `MEM-${Math.floor(Math.random() * 10000)}`,
+      status: 'active',
+      joined_date: new Date(),
+    }, { onConflict: 'profile_id, organization_id' });
 
     if (error) {
       return redirect(`/onboarding?error=${encodeURIComponent(error.message)}`);
     }
 
-    // TODO: Send notification to SACCO admin via a future notifications system
-    // The 'notifications' table is not yet in the schema
-    // For now, the admin will see the pending request in the organizations dashboard
-    console.log(`New join request: business ${business.id} → org ${organizationId}`);
+    console.log(`New join request: user ${user.id} → org ${organizationId}`);
 
     revalidatePath('/', 'layout');
-    return redirect('/onboarding/success');
+    return redirect('/onboarding?step=saving-plan');
+}
+
+export async function selectSavingPlan(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return redirect('/login');
   }
 
-  return redirect('/onboarding');
+  const productId = formData.get('productId') as string;
+  const organizationId = formData.get('organizationId') as string;
+
+  if (!productId || !organizationId) {
+    return redirect(`/onboarding?step=saving-plan&error=${encodeURIComponent('Please select a saving plan.')}`);
+  }
+
+  // 0. Get the actual member ID for this profile
+  const { data: member } = await supabase
+    .schema('sacco')
+    .from('members')
+    .select('id')
+    .eq('profile_id', user.id)
+    .eq('organization_id', organizationId)
+    .single();
+
+  if (!member) {
+    return redirect(`/onboarding?step=organization&error=${encodeURIComponent('Member profile not found.')}`);
+  }
+
+  // 1. Create a savings account for the member
+  const { data: account, error: accountError } = await supabase
+    .schema('sacco')
+    .from('accounts')
+    .insert({
+      organization_id: organizationId,
+      account_category: 'liability',
+      code: `SAV-${Math.floor(1000 + Math.random() * 9000)}`,
+      name: 'Savings Account',
+      member_id: member.id,
+      currency: 'UGX',
+      cached_balance: 0,
+      is_system: false,
+      is_active: true,
+    })
+    .select()
+    .single();
+
+  if (accountError) {
+    console.error('Account creation error:', accountError);
+    return redirect(`/onboarding?step=saving-plan&error=${encodeURIComponent(accountError.message)}`);
+  }
+
+  // 2. Link the product to the member
+  const { error: memberSavingsError } = await supabase
+    .schema('sacco')
+    .from('member_savings')
+    .insert({
+      organization_id: organizationId,
+      member_id: member.id,
+      savings_product_id: productId,
+      account_id: account.id,
+      status: 'active',
+      opened_date: new Date().toISOString(),
+    });
+
+  if (memberSavingsError) {
+    console.error('Member savings link error:', memberSavingsError);
+    return redirect(`/onboarding?step=saving-plan&error=${encodeURIComponent(memberSavingsError.message)}`);
+  }
+
+  revalidatePath('/', 'layout');
+  return redirect('/my-wallet');
 }

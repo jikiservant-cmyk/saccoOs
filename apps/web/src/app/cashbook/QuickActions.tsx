@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { addBusinessTransaction } from './actions';
+import { addTransaction } from './actions';
 import { BusinessTransactionType } from '@sacco/core';
 
 interface QuickActionsProps {
@@ -30,7 +30,7 @@ export default function QuickActions({ businessId }: QuickActionsProps) {
     formData.append('type', type);
     formData.append('date', new Date().toISOString());
 
-    const result = await addBusinessTransaction(formData);
+    const result = await addTransaction(formData);
     setLoading(false);
     
     if (result.success) {

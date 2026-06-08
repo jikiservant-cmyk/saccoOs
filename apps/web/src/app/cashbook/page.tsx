@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from '@/utils/supabase/server';
 import { ROLES, Role } from '@sacco/core';
 import { format } from 'date-fns';
@@ -36,7 +37,16 @@ export default async function CashbookPage() {
     .single();
 
   // DEBUG: If business is missing, create a default one for the session (or UI fallback)
-  if (!business && (role === 'business_owner' || role === 'member')) {
+  // Focusing on member-only flow: we only auto-create if they are an SME owner
+  if (!business && role === ROLES.SME_OWNER) {
+    // 1. Get a default organization to link to (mandatory as per new requirement)
+    const { data: defaultOrg } = await supabase
+      .schema('sacco')
+      .from('organizations')
+      .select('id')
+      .limit(1)
+      .single();
+
     // Attempt to auto-create if missing for existing users
     const { data: newBiz, error: createError } = await supabase
       .schema('sacco')
@@ -50,8 +60,34 @@ export default async function CashbookPage() {
       .select()
       .single();
     
-    if (!createError) {
+    if (!createError && newBiz) {
       business = newBiz;
+
+      // 2. Link business to the organization if one exists
+      if (defaultOrg) {
+        await supabase
+          .schema('sacco')
+          .from('business_organizations')
+          .insert({
+            business_id: newBiz.id,
+            organization_id: defaultOrg.id,
+            relationship_type: 'member',
+            status: 'active',
+            joined_at: new Date(),
+          });
+        
+        // 3. Ensure the owner is also a member of this SACCO
+        await supabase
+          .schema('sacco')
+          .from('members')
+          .upsert({
+            profile_id: user.id,
+            organization_id: defaultOrg.id,
+            membership_number: `MEM-${Math.floor(Math.random() * 10000)}`,
+            status: 'active',
+            joined_date: new Date(),
+          }, { onConflict: 'profile_id, organization_id' });
+      }
     }
   }
 
@@ -60,10 +96,9 @@ export default async function CashbookPage() {
   
   // Get wallet if member
   let wallet = null;
-  if (role === 'member') {
+  if (role === ROLES.MEMBER) {
     const { data: walletData } = await supabase
-      .schema('sacco')
-      .from('wallets')
+      .schema('sacco').from('wallets')
       .select('*')
       .eq('profile_id', user.id)
       .single();
@@ -71,11 +106,11 @@ export default async function CashbookPage() {
   }
 
   const totalIncome = transactions
-    .filter(t => t.transaction_type === 'income')
+    .filter(t => (t as any).transaction_type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
   
   const totalExpenses = transactions
-    .filter(t => t.transaction_type === 'expense')
+    .filter(t => (t as any).transaction_type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
 
   // Calculate Stock value specifically
@@ -87,7 +122,7 @@ export default async function CashbookPage() {
 
   // Group transactions by date
   const groupedTransactions = transactions.reduce((groups: { [key: string]: any[] }, tx) => {
-    const date = format(new Date(tx.transaction_date), 'yyyy-MM-dd');
+    const date = format(new Date((tx as any).transaction_date), 'yyyy-MM-dd');
     if (!groups[date]) groups[date] = [];
     groups[date].push(tx);
     return groups;
@@ -111,7 +146,7 @@ export default async function CashbookPage() {
             <span className="notif-pip absolute top-[9px] right-[9px] w-[7px] h-[7px] rounded-full bg-[var(--gold)] border-[1.5px] border-[var(--card)]"></span>
           </button>
           <div className="avatar w-[40px] h-[40px] rounded-[12px] bg-[var(--navy)] flex items-center justify-center font-serif text-[14px] font-bold text-[var(--gold)] cursor-pointer tracking-[0.5px]" role="button" aria-label="Profile">
-            {profile?.full_name?.split(' ').map(n => n[0]).join('') || 'AM'}
+            {profile?.full_name?.split(' ').map((n: string) => n[0]).join('') || 'AM'}
           </div>
         </div>
       </header>
@@ -122,79 +157,57 @@ export default async function CashbookPage() {
         <div className="greeting-name font-serif text-[24px] font-bold text-[var(--navy)]">{profile?.full_name || 'Alex Mugisha'}</div>
       </div>
 
-      {/* HERO CARD */}
-      <div className="hero mx-[22px] mt-[16px] bg-[var(--navy)] rounded-[26px] p-[30px_28px_26px] relative overflow-hidden animate-fade-up [animation-delay:0.1s]">
-        {/* decorative teal arc */}
-        <div className="absolute -top-[70px] -right-[70px] w-[220px] h-[220px] rounded-full border-[32px] border-[#0eb898]/20 pointer-events-none"></div>
-        {/* gold accent line */}
-        <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[var(--gold)] to-[var(--teal-mid)] rounded-b-[26px]"></div>
-
-        <div className="hero-tag inline-flex items-center gap-[6px] bg-[rgba(201,168,76,0.15)] border border-[rgba(201,168,76,0.3)] rounded-full p-[4px_12px] text-[11px] font-semibold text-[var(--gold)] tracking-[0.8px] uppercase mb-[14px] font-mono">
-          <span className="hero-tag-dot w-[6px] h-[6px] rounded-full bg-[var(--gold)]"></span>
-          {business?.name || 'Personal Wallet'}
-        </div>
-
-        <div className="hero-lbl text-[12px] font-medium text-white/45 uppercase tracking-[1.5px] mb-[8px] font-mono">Total Balance</div>
-        <div className="hero-balance font-serif text-[40px] font-extrabold text-white tracking-[-1px] leading-none mb-[4px] flex items-baseline">
-          <span className="cur font-sans text-[18px] font-semibold text-white/50 mr-[5px]">UGX</span>
-          {balance.toLocaleString()}
-        </div>
-        <div className="hero-sub font-mono text-[11px] text-white/35 mb-[26px]">Last updated — {format(now, 'MMMM dd, yyyy')}</div>
-
-        <div className="hero-row flex gap-[12px]">
-          <div className="hero-chip flex items-center gap-[8px] bg-white/10 border border-white/10 rounded-[12px] p-[9px_14px] flex-1">
-            <div className="hc-icon inc w-[28px] h-[28px] rounded-[8px] flex items-center justify-center bg-[#1a9e6e]/20">
-              <svg className="w-[15px] h-[15px] fill-none stroke-[2.2] stroke-[#4dd9a8]" viewBox="0 0 24 24">
-                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                <polyline points="17 6 23 6 23 12" />
-              </svg>
-            </div>
-            <div className="hc-text">
-              <div className="hc-lbl text-[10px] text-white/40 font-medium uppercase tracking-[0.8px]">Net Income</div>
-              <div className="hc-val font-mono text-[13px] font-medium text-white mt-[1px]">{(totalIncome - totalExpenses).toLocaleString()}</div>
-            </div>
+      {/* WALLET CARD (IF MEMBER) */}
+      {(role === ROLES.MEMBER || role === ROLES.SME_OWNER) ? (
+        <div className="hero mx-[22px] mt-[16px] bg-gradient-to-br from-[#1a1f2c] to-[#0f131a] rounded-[26px] p-[30px_28px_26px] relative overflow-hidden animate-fade-up [animation-delay:0.1s] shadow-[0_10px_40px_rgba(0,0,0,0.15)] ring-1 ring-white/10">
+          {/* decorative glow */}
+          <div className="absolute top-[-50%] right-[-20%] w-[80%] h-[150%] bg-gradient-to-b from-[#0eb898]/20 to-transparent rounded-full blur-3xl pointer-events-none transform rotate-45"></div>
+          
+          <div className="hero-tag inline-flex items-center gap-[6px] bg-white/10 border border-white/10 rounded-full p-[5px_14px] text-[10px] font-bold text-white tracking-[1px] uppercase mb-[20px] font-sans">
+            <span className="hero-tag-dot w-[6px] h-[6px] rounded-full bg-[#0eb898] shadow-[0_0_8px_#0eb898]"></span>
+            Personal Wallet
           </div>
-          <div className="hero-chip flex items-center gap-[8px] bg-white/10 border border-white/10 rounded-[12px] p-[9px_14px] flex-1">
-            <div className="hc-icon exp w-[28px] h-[28px] rounded-[8px] flex items-center justify-center bg-[var(--gold)]/20">
-              <svg className="w-[15px] h-[15px] fill-none stroke-[2.2] stroke-[var(--gold)]" viewBox="0 0 24 24">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" />
-              </svg>
-            </div>
-            <div className="hc-text">
-              <div className="hc-lbl text-[10px] text-white/40 font-medium uppercase tracking-[0.8px]">Stock Value</div>
-              <div className="hc-val font-mono text-[13px] font-medium text-white mt-[1px]">{stockValue.toLocaleString()}</div>
-            </div>
+
+          <div className="hero-lbl text-[11px] font-bold text-white/50 uppercase tracking-[2px] mb-[8px] font-sans">Available Balance</div>
+          <div className="hero-balance font-serif text-[44px] font-black text-white tracking-[-1px] leading-none mb-[24px] flex items-baseline">
+            <span className="cur font-sans text-[20px] font-bold text-[#0eb898] mr-[6px] tracking-normal">UGX</span>
+            {wallet?.balance?.toLocaleString() || '0'}
+          </div>
+
+          <div className="flex gap-[12px] mt-[10px]">
+            <QuickActions businessId={business?.id || ''} role={role} context="wallet" />
           </div>
         </div>
-      </div>
+      ) : null}
 
       {/* MAIN CONTENT SECTIONS */}
       <div className="section px-[22px] mt-[26px] animate-fade-up [animation-delay:0.18s]">
-        {/* QUICK ACTIONS */}
-        <div className="sec-row flex justify-between items-center mb-[14px] mt-0">
-          <span className="sec-title font-serif text-[18px] font-bold text-[var(--navy)]">Actions</span>
-        </div>
         
-        {business && <QuickActions businessId={business.id} />}
+        {/* BUSINESS STATS */}
+        {role === ROLES.SME_OWNER && (
+          <>
+            <div className="sec-row flex items-center gap-3 mb-[16px]">
+              <div className="h-[1px] flex-1 bg-[var(--border2)]"></div>
+              <span className="sec-title text-[9px] font-black uppercase tracking-[2px] text-[var(--muted2)] bg-[var(--bg)] px-2">{business?.name || 'Business'} Metrics</span>
+              <div className="h-[1px] flex-1 bg-[var(--border2)]"></div>
+            </div>
+            
+            <QuickActions businessId={business?.id || ''} role={role} context="business" />
 
-        {/* STATS */}
-        <div className="sec-row flex justify-between items-center mb-[14px]">
-          <span className="sec-title font-serif text-[18px] font-bold text-[var(--navy)]">Performance</span>
-        </div>
-        <div className="stats-row grid grid-cols-2 gap-[12px] mb-[26px]">
-          <div className="stat-card inc bg-[var(--card)] border border-[var(--border2)] rounded-[20px] p-[18px_20px] relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--green)]"></div>
-            <div className="sc-lbl text-[11px] font-bold text-[var(--muted2)] uppercase tracking-[1px] mb-[8px]">Sales Revenue</div>
-            <div className="sc-val inc font-serif text-[20px] font-bold text-[var(--green)]">{totalIncome.toLocaleString()}</div>
-            <div className="sc-sub font-mono text-[10px] text-[var(--muted2)] mt-[4px]">UGX · {format(now, 'MMM yyyy')}</div>
-          </div>
-          <div className="stat-card exp bg-[var(--card)] border border-[var(--border2)] rounded-[20px] p-[18px_20px] relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--gold)]"></div>
-            <div className="sc-lbl text-[11px] font-bold text-[var(--muted2)] uppercase tracking-[1px] mb-[8px]">Inventory Value</div>
-            <div className="sc-val exp font-serif text-[20px] font-bold text-[var(--gold-dark)]">{stockValue.toLocaleString()}</div>
-            <div className="sc-sub font-mono text-[10px] text-[var(--muted2)] mt-[4px]">Current Stock</div>
-          </div>
-        </div>
+            <div className="stats-row grid grid-cols-2 gap-[12px] mb-[26px]">
+              <div className="stat-card inc bg-[var(--card)] border border-[var(--border2)] rounded-[20px] p-[18px_20px] relative overflow-hidden transition-all hover:border-[var(--green)]/30 hover:shadow-[0_8px_20px_rgba(14,140,114,0.06)]">
+                <div className="sc-lbl text-[10px] font-black text-[var(--muted2)] uppercase tracking-[1.5px] mb-[12px]">Net Income</div>
+                <div className="sc-val inc font-serif text-[24px] font-bold text-[var(--green)]">{(totalIncome - totalExpenses).toLocaleString()}</div>
+                <div className="sc-sub font-mono text-[9px] font-bold text-[var(--muted)] mt-[6px] uppercase tracking-wider">UGX · Month</div>
+              </div>
+              <div className="stat-card exp bg-[var(--card)] border border-[var(--border2)] rounded-[20px] p-[18px_20px] relative overflow-hidden transition-all hover:border-[var(--gold)]/30 hover:shadow-[0_8px_20px_rgba(201,168,76,0.06)]">
+                <div className="sc-lbl text-[10px] font-black text-[var(--muted2)] uppercase tracking-[1.5px] mb-[12px]">Stock Value</div>
+                <div className="sc-val exp font-serif text-[24px] font-bold text-[var(--gold-dark)]">{stockValue.toLocaleString()}</div>
+                <div className="sc-sub font-mono text-[9px] font-bold text-[var(--muted)] mt-[6px] uppercase tracking-wider">Current</div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* BUDGET */}
         <div className="sec-row flex justify-between items-center mb-[14px]">
@@ -269,9 +282,9 @@ export default async function CashbookPage() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className={`tx-amt font-mono text-[14px] font-bold
-                        ${tx.transaction_type === 'income' ? 'text-[var(--green)]' : 'text-[var(--red)]'}
+                        ${(tx as any).transaction_type === 'income' ? 'text-[var(--green)]' : 'text-[var(--red)]'}
                       `}>
-                        {tx.transaction_type === 'income' ? '+' : '−'}{tx.amount.toLocaleString()}
+                        {(tx as any).transaction_type === 'income' ? '+' : '−'}{tx.amount.toLocaleString()}
                       </div>
                       <div className="text-[9px] font-black text-[var(--muted2)] uppercase tracking-tighter">UGX</div>
                     </div>

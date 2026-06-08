@@ -1,12 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
-import { BusinessTransaction, BusinessTransactionType } from '@sacco/core';
 import { revalidatePath } from 'next/cache';
 
 export async function getBusinessTransactions(businessId: string) {
   const supabase = await createClient();
-  
   const { data, error } = await supabase
     .schema('sacco')
     .from('business_transactions')
@@ -15,89 +14,117 @@ export async function getBusinessTransactions(businessId: string) {
     .order('transaction_date', { ascending: false });
 
   if (error) {
-    console.error('Error fetching business transactions:', error);
+    console.error('Error fetching transactions:', error);
     return [];
   }
-
-  return data as BusinessTransaction[];
+  return data;
 }
 
-export async function addBusinessTransaction(formData: FormData) {
+export async function addTransaction(formData: FormData) {
   const supabase = await createClient();
-  
-  const businessId = formData.get('businessId') as string;
-  const type = formData.get('type') as BusinessTransactionType;
-  const amount = parseFloat(formData.get('amount') as string);
-  const category = formData.get('category') as string;
-  const description = formData.get('description') as string;
-  const paymentMethod = formData.get('paymentMethod') as any;
-  const transactionDate = formData.get('date') as string;
-
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  const { error } = await supabase
+  const amount = Number(formData.get('amount'));
+  const description = formData.get('description') as string;
+  const businessId = formData.get('businessId') as string;
+  const transaction_type = formData.get('type') as string;
+  const category = formData.get('category') as string || 'General';
+
+  const { data, error } = await supabase
     .schema('sacco')
     .from('business_transactions')
-    .insert([
-      {
-        business_id: businessId,
-        transaction_type: type,
-        amount,
-        category,
-        description,
-        payment_method: paymentMethod,
-        transaction_date: transactionDate,
-        created_by: user.id,
-      },
-    ]);
+    .insert([{
+      amount,
+      description,
+      business_id: businessId,
+      transaction_type,
+      category,
+      transaction_date: new Date().toISOString()
+    }])
+    .select()
+    .single();
 
   if (error) {
-    console.error('Error adding transaction:', error);
-    return { error: error.message };
+    console.error('Transaction error:', error);
+    return { success: false, error: error.message };
   }
+  
+  revalidatePath('/cashbook');
+  return { success: true, data };
+}
+
+/**
+ * Top up a member's personal SACCO wallet
+ */
+export async function topUpWallet(amount: number) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // Get current balance
+  const { data: wallet, error: fetchError } = await supabase
+    .schema('sacco')
+    .from('wallets')
+    .select('id, balance')
+    .eq('profile_id', user.id)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const newBalance = (wallet.balance || 0) + amount;
+
+  // Update balance
+  const { error: updateError } = await supabase
+    .schema('sacco')
+    .from('wallets')
+    .update({ balance: newBalance })
+    .eq('id', wallet.id);
+
+  if (updateError) throw updateError;
+
+  // Record the transaction in the ledger for audit
+  await supabase
+    .schema('sacco')
+    .from('business_transactions')
+    .insert({
+      description: 'Wallet Top-up',
+      amount: amount,
+      transaction_type: 'income',
+      category: 'Wallet',
+      business_id: null, // personal
+    });
 
   revalidatePath('/cashbook');
+  return { success: true, newBalance };
+}
+
+/**
+ * Record a deposit to the SACCO central treasury (Admin only)
+ */
+export async function depositToSacco(amount: number, organizationId: string) {
+  const supabase = await createClient();
+  
+  // Get current treasury balance
+  const { data: wallet, error: fetchError } = await supabase
+    .schema('sacco')
+    .from('wallets')
+    .select('id, balance')
+    .eq('organization_id', organizationId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const newBalance = (wallet.balance || 0) + amount;
+
+  const { error: updateError } = await supabase
+    .schema('sacco')
+    .from('wallets')
+    .update({ balance: newBalance })
+    .eq('id', wallet.id);
+
+  if (updateError) throw updateError;
+
+  revalidatePath('/admin');
   return { success: true };
 }
-
-export async function getBusinessAnalytics(businessId: string) {
-  const supabase = await createClient();
-  
-  const { data, error } = await supabase
-    .schema('sacco')
-    .from('business_analytics_snapshots')
-    .select('*')
-    .eq('business_id', businessId)
-    .order('snapshot_date', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null; // No rows found is not an error for analytics
-    console.error('Error fetching business analytics:', error);
-    return null;
-  }
-
-  return data;
-}
-
-export async function getBusinessCreditProfile(businessId: string) {
-  const supabase = await createClient();
-  
-  const { data, error } = await supabase
-    .schema('sacco')
-    .from('business_credit_profiles')
-    .select('*')
-    .eq('business_id', businessId)
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null; // No rows found is not an error
-    console.error('Error fetching credit profile:', error);
-    return null;
-  }
-
-  return data;
-}
-

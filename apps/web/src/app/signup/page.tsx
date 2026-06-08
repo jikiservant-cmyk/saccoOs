@@ -75,7 +75,7 @@ export default async function SignupPage({
               />
             </div>
 
-            <div>
+            <div className="hidden">
               <label className="block font-mono text-[10px] font-bold uppercase tracking-[2px] text-[var(--muted2)] mb-2" htmlFor="role">
                 Account Type
               </label>
@@ -84,9 +84,7 @@ export default async function SignupPage({
                 className="w-full px-4 py-3 bg-white/50 border border-[var(--border2)] rounded-2xl text-sm text-[var(--navy)] focus:outline-none focus:ring-2 focus:ring-[var(--teal)]/20 transition-all font-mono appearance-none"
                 required
               >
-                <option value="business_owner">Business Owner (SME)</option>
-                <option value="member">SACCO Member</option>
-                <option value="sacco_admin">SACCO Administrator</option>
+                <option value="member" selected>SACCO Member</option>
               </select>
             </div>
 

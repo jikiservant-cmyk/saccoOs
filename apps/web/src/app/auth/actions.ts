@@ -37,8 +37,8 @@ export async function login(formData: FormData) {
     if (roles.includes('sacco_admin')) {
       return redirect('/admin');
     } else if (roles.includes('member') || roles.includes('business_owner')) {
-      // Both members and business owners go to the SME dashboard (cashbook)
-      return redirect('/cashbook');
+      // Both members and business owners go to the member wallet
+      return redirect('/my-wallet');
     }
   }
 
@@ -53,7 +53,8 @@ export async function signup(formData: FormData) {
   const password = formData.get('password') as string;
   const fullName = formData.get('fullName') as string;
   const phone = formData.get('phone') as string;
-  const role = formData.get('role') as string;
+  const requestedRole = formData.get('role') as string;
+  const role = requestedRole === 'sacco_admin' ? 'sacco_admin' : 'member';
 
   console.log('Attempting signup for:', email);
 
@@ -78,8 +79,7 @@ export async function signup(formData: FormData) {
   if (data.user) {
     console.log('Auth user created successfully:', data.user.id);
 
-    // 1. Ensure Profile exists with the chosen role
-    // Using upsert since the user might already have an auth record but no profile
+    // 1. Ensure Profile exists in sacco.profiles
     const { error: profileError } = await supabase
       .schema('sacco')
       .from('profiles')
@@ -90,7 +90,7 @@ export async function signup(formData: FormData) {
         phone: phone,
         is_platform_admin: false,
         is_active: true,
-        roles: [role],
+        roles: ['member'], // Force member role for simplified flow
       }, { onConflict: 'id' });
     
     if (profileError) {
@@ -98,32 +98,28 @@ export async function signup(formData: FormData) {
     } else {
         console.log('Profile ensured successfully');
         
-        // 2. Ensure a default Business exists for SME owners and members
-        if (role === 'business_owner' || role === 'member') {
-          const { data: existingBiz } = await supabase
-            .schema('sacco')
-            .from('businesses')
-            .select('id')
-            .eq('owner_profile_id', data.user.id)
-            .single();
+        // 2. Link user as a member of the default organization
+        const { data: defaultOrg } = await supabase
+          .schema('sacco')
+          .from('organizations')
+          .select('id')
+          .limit(1)
+          .single();
 
-          if (!existingBiz) {
-            const { error: bizError } = await supabase
-              .schema('sacco')
-              .from('businesses')
-              .insert({
-                owner_profile_id: data.user.id,
-                name: `${fullName}'s Business`,
-                business_type: 'General',
-                district: 'Uganda',
-              });
-            
-            if (bizError) {
-              console.error('Error creating default business:', bizError);
-            } else {
-              console.log('Default business created successfully');
-            }
-          }
+        if (defaultOrg) {
+          // Strictly follow: auth.users → sacco.profiles → sacco.members
+          await supabase
+            .schema('sacco')
+            .from('members')
+            .upsert({
+              profile_id: data.user.id,
+              organization_id: defaultOrg.id,
+              membership_number: `MEM-${Math.floor(Math.random() * 10000)}`,
+              status: 'active', // Set to active immediately for simplified flow
+              joined_date: new Date(),
+            }, { onConflict: 'profile_id, organization_id' });
+          
+          console.log('Member record created for organization:', defaultOrg.id);
         }
     }
 
@@ -132,7 +128,7 @@ export async function signup(formData: FormData) {
       revalidatePath('/', 'layout');
       // Redirect based on role
       if (role === 'sacco_admin') return redirect('/admin');
-      return redirect('/cashbook');
+      return redirect('/my-wallet');
     }
   }
 
