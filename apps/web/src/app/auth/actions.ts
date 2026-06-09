@@ -32,18 +32,23 @@ export async function login(formData: FormData) {
       return redirect('/super-admin');
     }
 
-    // Check roles for redirection
-    const roles = profile?.roles || [];
+    const roles: string[] = profile?.roles || [];
+
     if (roles.includes('sacco_admin')) {
       return redirect('/admin');
-    } else if (roles.includes('member') || roles.includes('sme_owner')) {
-      // Both members and sme owners go to the member wallet
+    }
+
+    if (roles.includes('member') || roles.includes('sme_owner')) {
       return redirect('/my-wallet');
     }
+
+    // FIX: was silently falling through to redirect('/') when profile was
+    // null or roles was empty (e.g. RLS blocking the profile read).
+    // Send to onboarding to recover gracefully instead of getting lost.
+    return redirect('/onboarding');
   }
 
-  revalidatePath('/', 'layout');
-  return redirect('/');
+  return redirect('/login?error=Authentication failed. Please try again.');
 }
 
 export async function signup(formData: FormData) {
@@ -56,88 +61,70 @@ export async function signup(formData: FormData) {
   const requestedRole = formData.get('role') as string;
   const role = requestedRole === 'sacco_admin' ? 'sacco_admin' : 'member';
 
-  console.log('Attempting signup for:', email);
-
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: {
-        full_name: fullName,
-        phone: phone,
-        role: role,
-      },
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`,
+      data: { full_name: fullName, phone, role },
+      // FIX: pass ?next=/onboarding so email-confirmed users land correctly
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback?next=/onboarding`,
     },
   });
 
   if (error) {
-    console.error('Supabase Auth Signup Error:', error);
     return redirect('/signup?error=' + encodeURIComponent(error.message));
   }
 
   if (data.user) {
-    console.log('Auth user created successfully:', data.user.id);
-
-    // 1. Ensure Profile exists in sacco.profiles
+    // 1. Create profile
     const { error: profileError } = await supabase
       .schema('sacco')
       .from('profiles')
       .upsert({
         id: data.user.id,
         full_name: fullName,
-        email: email,
-        phone: phone,
+        email,
+        phone,
         is_platform_admin: false,
         is_active: true,
-        roles: ['member'], // Force member role for simplified flow
+        roles: ['member'],
       }, { onConflict: 'id' });
-    
-    if (profileError) {
-        console.error('Error ensuring profile:', profileError);
-    } else {
-        console.log('Profile ensured successfully');
-        
-        // 2. Link user as a member of the default organization
-        const { data: defaultOrg } = await supabase
-          .schema('sacco')
-          .from('organizations')
-          .select('id')
-          .limit(1)
-          .single();
 
-        if (defaultOrg) {
-          // Strictly follow: auth.users → sacco.profiles → sacco.members
-          await supabase
-            .schema('sacco')
-            .from('members')
-            .upsert({
-              profile_id: data.user.id,
-              organization_id: defaultOrg.id,
-              membership_number: `MEM-${Math.floor(Math.random() * 10000)}`,
-              status: 'active', // Set to active immediately for simplified flow
-              joined_date: new Date(),
-            }, { onConflict: 'profile_id, organization_id' });
-          
-          console.log('Member record created for organization:', defaultOrg.id);
-        }
+    if (profileError) {
+      console.error('Error ensuring profile:', profileError);
     }
 
-    // If session exists (email confirmation is OFF in Supabase), proceed
+    // 2. Auto-assign to the one SACCO
+    const { data: defaultOrg } = await supabase
+      .schema('sacco')
+      .from('organizations')
+      .select('id')
+      .limit(1)
+      .single();
+
+    if (defaultOrg) {
+      await supabase
+        .schema('sacco')
+        .from('members')
+        .upsert({
+          profile_id: data.user.id,
+          organization_id: defaultOrg.id,
+          membership_number: `MEM-${Math.floor(Math.random() * 10000)}`,
+          status: 'active',
+          joined_date: new Date(),
+        }, { onConflict: 'profile_id, organization_id' });
+    }
+
+    // Email confirmation OFF — session exists, redirect immediately
     if (data.session) {
       revalidatePath('/', 'layout');
-      // Sacco admins go straight to admin dashboard.
       if (role === 'sacco_admin') return redirect('/admin');
-      // Always route new members through onboarding so they can select a
-      // SACCO and saving plan. The onboarding page auto-skips to /my-wallet
-      // if the member is already fully set up.
       return redirect('/onboarding');
     }
   }
 
   revalidatePath('/', 'layout');
-  // If no session, email confirmation is still ON in Supabase.
-  return redirect('/signup?message=Signup successful! Please disable "Confirm email" in Supabase Auth settings to skip this step next time.');
+  return redirect('/signup?message=Check your email to confirm your account.');
 }
 
 export async function signOut() {
