@@ -17,6 +17,7 @@ export async function createOrganization(formData: FormData): Promise<void> {
   const currency = formData.get('currency') as string || 'UGX';
 
   const { error } = await supabase
+    .schema('sacco')
     .from('organizations')
     .insert([
       {
@@ -46,9 +47,15 @@ export async function createOrganization(formData: FormData): Promise<void> {
 export async function respondToJoinRequest(requestId: string, status: 'active' | 'rejected') {
   const supabase = await createClient();
 
+  // Join requests are stored as rows in sacco.members with status='pending'.
+  // Approving means setting status to 'active'; rejecting sets it to 'rejected'.
   const { error } = await supabase
-    .from('business_organizations')
-    .update({ status, joined_at: status === 'active' ? new Date() : null })
+    .schema('sacco')
+    .from('members')
+    .update({
+      status,
+      joined_date: status === 'active' ? new Date().toISOString() : null,
+    })
     .eq('id', requestId);
 
   if (error) {

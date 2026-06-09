@@ -55,12 +55,6 @@ async function getSaccoMembers() {
     return [];
   }
   return data.map((d: any) => d.profiles).filter(Boolean);
-
-  if (error) {
-    console.error('Error fetching members:', error);
-    return [];
-  }
-  return data;
 }
 
 async function getSaccoWallet() {

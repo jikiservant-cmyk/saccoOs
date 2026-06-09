@@ -46,6 +46,11 @@ export interface Member {
   photo_url?: string;
   registration_date: string;
   status: 'active' | 'suspended' | 'closed';
+  /**
+   * Optional link to a Business (SME) record.
+   * This field is NOT required for standard SACCO membership and should only
+   * be populated when the SME / business-owner feature is enabled for this member.
+   */
   business_id?: string;
   created_by?: string;
   created_at: Date;

@@ -1,9 +1,12 @@
 import { createClient } from '@/utils/supabase/server';
 
+/**
+ * Returns the SACCO onboarding status for a given user.
+ * Only checks SACCO membership — business/SME checks are handled separately.
+ */
 export async function getOnboardingStatus(userId: string) {
   const supabase = await createClient();
 
-  // 1. Check for SACCO membership
   const { data: member, error: memberError } = await supabase
     .schema('sacco')
     .from('members')
@@ -12,12 +15,12 @@ export async function getOnboardingStatus(userId: string) {
     .single();
 
   if (memberError || !member) {
-    return { hasBusiness: true, hasOrg: false, isPending: false };
+    // No member record found — user has not joined any SACCO yet
+    return { hasOrg: false, isPending: false };
   }
 
-  return { 
-    hasBusiness: true, 
-    hasOrg: member.status === 'active', 
-    isPending: member.status === 'pending' 
+  return {
+    hasOrg: member.status === 'active',
+    isPending: member.status === 'pending',
   };
 }

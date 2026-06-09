@@ -109,6 +109,28 @@ export async function selectSavingPlan(formData: FormData) {
     return redirect(`/onboarding?step=saving-plan&error=${encodeURIComponent(memberSavingsError.message)}`);
   }
 
+  // 3. Create a wallet for the member (used by the my-wallet dashboard).
+  //    Safe to ignore errors here — the wallet may already exist, or may be
+  //    created by a DB trigger; either way the member can proceed.
+  const { error: walletError } = await supabase
+    .schema('sacco')
+    .from('wallets')
+    .upsert(
+      {
+        profile_id: user.id,
+        organization_id: organizationId,
+        currency: 'UGX',
+        cached_balance: 0,
+        is_active: true,
+      },
+      { onConflict: 'profile_id' }
+    );
+
+  if (walletError) {
+    // Non-fatal — log and continue; wallet may be managed by a DB trigger
+    console.warn('Wallet upsert warning (non-fatal):', walletError.message);
+  }
+
   revalidatePath('/', 'layout');
   return redirect('/my-wallet');
 }

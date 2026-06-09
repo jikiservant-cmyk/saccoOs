@@ -36,8 +36,8 @@ export async function login(formData: FormData) {
     const roles = profile?.roles || [];
     if (roles.includes('sacco_admin')) {
       return redirect('/admin');
-    } else if (roles.includes('member') || roles.includes('business_owner')) {
-      // Both members and business owners go to the member wallet
+    } else if (roles.includes('member') || roles.includes('sme_owner')) {
+      // Both members and sme owners go to the member wallet
       return redirect('/my-wallet');
     }
   }
@@ -123,17 +123,20 @@ export async function signup(formData: FormData) {
         }
     }
 
-    // If session exists (email confirmation is OFF in Supabase), go to dashboard
+    // If session exists (email confirmation is OFF in Supabase), proceed
     if (data.session) {
       revalidatePath('/', 'layout');
-      // Redirect based on role
+      // Sacco admins go straight to admin dashboard.
       if (role === 'sacco_admin') return redirect('/admin');
-      return redirect('/my-wallet');
+      // Always route new members through onboarding so they can select a
+      // SACCO and saving plan. The onboarding page auto-skips to /my-wallet
+      // if the member is already fully set up.
+      return redirect('/onboarding');
     }
   }
 
   revalidatePath('/', 'layout');
-  // If no session, it means email confirmation is still ON in Supabase
+  // If no session, email confirmation is still ON in Supabase.
   return redirect('/signup?message=Signup successful! Please disable "Confirm email" in Supabase Auth settings to skip this step next time.');
 }
 
